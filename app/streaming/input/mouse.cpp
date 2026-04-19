@@ -1,3 +1,5 @@
+
+#include "streaming/session.h"
 #include "input.h"
 
 #include <Limelight.h>
@@ -6,6 +8,10 @@
 
 void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
 {
+    // Block mouse button events when menu overlay is visible
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        return;
+    }
     int button;
 
     if (event->which == SDL_TOUCH_MOUSEID) {
@@ -70,6 +76,10 @@ void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
 
 void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
 {
+    // Block mouse motion events when menu overlay is visible
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        return;
+    }
     if (!isCaptureActive()) {
         // Not capturing
         return;
@@ -156,6 +166,10 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
 
 void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 {
+    // Block mouse wheel events when menu overlay is visible
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        return;
+    }
     if (!isCaptureActive()) {
         // Not capturing
         return;

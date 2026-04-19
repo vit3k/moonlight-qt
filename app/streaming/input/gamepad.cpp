@@ -191,6 +191,12 @@ Uint32 SdlInputHandler::mouseEmulationTimerCallback(Uint32 interval, void *param
 
 void SdlInputHandler::handleControllerAxisEvent(SDL_ControllerAxisEvent* event)
 {
+
+    // Block analog/trigger input when menu overlay is visible
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        return;
+    }
+
     SDL_JoystickID gameControllerId = event->which;
     GamepadState* state = findStateForGamepad(gameControllerId);
     if (state == NULL) {
