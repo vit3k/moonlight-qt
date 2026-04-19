@@ -286,7 +286,6 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
     if (Session::get()->getMenuOverlay().isVisible()) {
         MenuOverlay& menu = Session::get()->getMenuOverlay();
 
-        // Still allow the menu toggle combo to close the menu
         if (event->state == SDL_PRESSED) {
             if (event->button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
                 menu.navigateUp();
@@ -302,7 +301,11 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
             }
         }
 
-        // Send neutral state and consume — do NOT modify state->buttons
+        // Zero state->buttons so that when the menu closes, the combo that opened it
+        // (e.g. Select+L1+R1+Y) is not still set and doesn't immediately re-trigger.
+        state->buttons = 0;
+
+        // Send neutral state and consume
         LiSendMultiControllerEvent(state->index, m_GamepadMask,
                                    0, 0, 0, 0, 0, 0, 0);
         return;
