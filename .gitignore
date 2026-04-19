@@ -6,3 +6,11 @@
 build/
 config.tests/*/.qmake.stash
 config.tests/*/Makefile
+.github
+.qtcreator
+.qtc_clangd
+app/debug
+app/Moonlight.app/
+h264bitstream
+moonlight-common-c
+qmdnsengine
