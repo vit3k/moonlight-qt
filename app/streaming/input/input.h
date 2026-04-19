@@ -161,6 +161,7 @@ private:
         KeyComboUngrabInput,
         KeyComboToggleFullScreen,
         KeyComboToggleStatsOverlay,
+        KeyComboToggleMenuOverlay,
         KeyComboToggleMouseMode,
         KeyComboToggleCursorHide,
         KeyComboToggleMinimize,

@@ -10,6 +10,7 @@ namespace Overlay {
 enum OverlayType {
     OverlayDebug,
     OverlayStatusUpdate,
+    OverlayMenu,
     OverlayMax
 };
 
@@ -36,6 +37,8 @@ public:
     SDL_Color getOverlayColor(OverlayType type);
     int getOverlayFontSize(OverlayType type);
     SDL_Surface* getUpdatedOverlaySurface(OverlayType type);
+
+    void setOverlaySurface(OverlayType type, SDL_Surface* surface);
 
     void setOverlayRenderer(IOverlayRenderer* renderer);
 

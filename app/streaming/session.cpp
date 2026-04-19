@@ -3,6 +3,10 @@
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
 
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QUrl>
+
 #include <Limelight.h>
 #include "SDL_compat.h"
 #include "utils.h"
@@ -561,6 +565,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_InputHandler(nullptr),
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
+      m_QuitAppOnExit(false),
       m_ShouldExit(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
@@ -1250,7 +1255,7 @@ private:
         // Only quit the running app if our session terminated gracefully
         bool shouldQuit =
                 !m_Session->m_UnexpectedTermination &&
-                m_Session->m_Preferences->quitAppAfter;
+                (m_Session->m_QuitAppOnExit || m_Session->m_Preferences->quitAppAfter);
 
         // Notify the UI
         if (shouldQuit) {
@@ -1534,6 +1539,57 @@ void Session::notifyMouseEmulationMode(bool enabled)
         m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, false);
     }
 }
+// TODO: clean it up
+void Session::showMenuOverlay()
+{
+    m_MenuOverlay.setItems({
+        {"Resume Stream",    [this]{ m_MenuOverlay.setVisible(false); }},
+        {"Suspend PC",       [this]{
+            m_MenuOverlay.setVisible(false);
+            // First end the stream session gracefully, then suspend once sessionFinished fires.
+            // This ensures the display switch happens cleanly on wake.
+            setQuitAppOnExit();
+            QString suspendUrl = QString("http://%1:7878/suspend").arg(m_Computer->activeAddress.address());
+            QObject::connect(this, &Session::sessionFinished, this,
+                             [suspendUrl](int) {
+                                 QNetworkRequest request((QUrl(suspendUrl)));
+                                 request.setTransferTimeout(3000);
+                                 auto* nam = new QNetworkAccessManager();
+                                 QObject::connect(nam, &QNetworkAccessManager::finished,
+                                                  nam, [nam](QNetworkReply* reply) {
+                                                      if (reply->error() != QNetworkReply::NoError) {
+                                                          SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                                                                      "Suspend request failed: %s",
+                                                                      reply->errorString().toUtf8().constData());
+                                                      }
+                                                      reply->deleteLater();
+                                                      nam->deleteLater();
+                                                  });
+                                 nam->post(request, QByteArray());
+                             }, Qt::SingleShotConnection);
+            interrupt();
+        }},
+        {"Toggle Fullscreen",[this]{ m_MenuOverlay.setVisible(false); toggleFullscreen(); }},
+        {"Toggle Stats",     [this]{
+            m_MenuOverlay.setVisible(false);
+            m_OverlayManager.setOverlayState(Overlay::OverlayDebug,
+                !m_OverlayManager.isOverlayEnabled(Overlay::OverlayDebug));
+        }},
+        {"Disconnect",       [this]{ m_MenuOverlay.setVisible(false); interrupt(); }},
+        {"Quit Game + Exit", [this]{ m_MenuOverlay.setVisible(false); setShouldExit(true); interrupt(); }}
+    });
+    m_MenuOverlay.setVisible(true);
+}
+
+void Session::hideMenuOverlay()
+{
+    m_MenuOverlay.setVisible(false);
+}
+
+void Session::setQuitAppOnExit(bool quitHostApp)
+{
+    m_QuitAppOnExit = quitHostApp;
+}
 
 class AsyncConnectionStartThread : public QThread
 {
@@ -1717,7 +1773,7 @@ void Session::setShouldExit(bool quitHostApp)
     // caller doesn't override to force quit, let the preferences
     // dictate what we do.
     if (quitHostApp) {
-        m_Preferences->quitAppAfter = true;
+        m_QuitAppOnExit = true;
     }
 
     m_ShouldExit = true;

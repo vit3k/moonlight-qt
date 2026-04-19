@@ -86,6 +86,11 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboToggleStatsOverlay].scanCode = SDL_SCANCODE_S;
     m_SpecialKeyCombos[KeyComboToggleStatsOverlay].enabled = true;
 
+    m_SpecialKeyCombos[KeyComboToggleMenuOverlay].keyCombo = KeyComboToggleMenuOverlay;
+    m_SpecialKeyCombos[KeyComboToggleMenuOverlay].keyCode = SDLK_y;
+    m_SpecialKeyCombos[KeyComboToggleMenuOverlay].scanCode = SDL_SCANCODE_Y;
+    m_SpecialKeyCombos[KeyComboToggleMenuOverlay].enabled = true;
+
     m_SpecialKeyCombos[KeyComboToggleMouseMode].keyCombo = KeyComboToggleMouseMode;
     m_SpecialKeyCombos[KeyComboToggleMouseMode].keyCode = SDLK_m;
     m_SpecialKeyCombos[KeyComboToggleMouseMode].scanCode = SDL_SCANCODE_M;

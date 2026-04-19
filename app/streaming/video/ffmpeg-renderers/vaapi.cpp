@@ -763,6 +763,11 @@ void VAAPIRenderer::notifyOverlayUpdated(Overlay::OverlayType type)
             overlayRect.x = 0;
             overlayRect.y = 0;
         }
+        else if (type == Overlay::OverlayMenu) {
+            // Centered (VA-API Y axis is inverted like OpenGL)
+            overlayRect.x = (m_DisplayWidth - newSurface->w) / 2;
+            overlayRect.y = -(m_DisplayHeight / 2) - (newSurface->h / 2);
+        }
 
         overlayRect.w = newSurface->w;
         overlayRect.h = newSurface->h;

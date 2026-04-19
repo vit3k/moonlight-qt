@@ -1,4 +1,5 @@
 #include "streaming/session.h"
+#include "streaming/video/menuoverlay.h"
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -56,6 +57,18 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         // Toggle the stats overlay
         Session::get()->getOverlayManager().setOverlayState(Overlay::OverlayDebug,
                                                             !Session::get()->getOverlayManager().isOverlayEnabled(Overlay::OverlayDebug));
+        break;
+
+    case KeyComboToggleMenuOverlay:
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Detected menu overlay toggle combo");
+
+        if (Session::get()->getMenuOverlay().isVisible()) {
+            Session::get()->getMenuOverlay().setVisible(false);
+        }
+        else {
+            Session::get()->showMenuOverlay();
+        }
         break;
 
     case KeyComboToggleMouseMode:
@@ -168,6 +181,46 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         // Ignore repeat key down events
         SDL_assert(event->state == SDL_PRESSED);
         return;
+    }
+
+    // When the menu overlay is visible, route keyboard controls to it
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        MenuOverlay& menu = Session::get()->getMenuOverlay();
+        const SDL_Scancode scancode = event->keysym.scancode;
+
+        const bool isMenuNavigateUp =
+                scancode == SDL_SCANCODE_UP ||
+                scancode == SDL_SCANCODE_W;
+        const bool isMenuNavigateDown =
+                scancode == SDL_SCANCODE_DOWN ||
+                scancode == SDL_SCANCODE_S;
+        const bool isMenuConfirm =
+                scancode == SDL_SCANCODE_RETURN ||
+                scancode == SDL_SCANCODE_KP_ENTER ||
+                scancode == SDL_SCANCODE_SPACE;
+        const bool isMenuCancel =
+                scancode == SDL_SCANCODE_ESCAPE ||
+                scancode == SDL_SCANCODE_BACKSPACE;
+
+        if (isMenuNavigateUp || isMenuNavigateDown || isMenuConfirm || isMenuCancel) {
+            if (event->state == SDL_PRESSED) {
+                if (isMenuNavigateUp) {
+                    menu.navigateUp();
+                }
+                else if (isMenuNavigateDown) {
+                    menu.navigateDown();
+                }
+                else if (isMenuConfirm) {
+                    menu.confirm();
+                }
+                else if (isMenuCancel) {
+                    menu.cancel();
+                }
+            }
+
+            // Consume menu key events while the menu overlay is active
+            return;
+        }
     }
 
     // Check for our special key combos

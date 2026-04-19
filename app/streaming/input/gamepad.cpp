@@ -1,4 +1,5 @@
 #include "streaming/session.h"
+#include "streaming/video/menuoverlay.h"
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -390,6 +391,49 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
                                                             !Session::get()->getOverlayManager().isOverlayEnabled(Overlay::OverlayDebug));
 
         // Clear buttons down on this gamepad
+        LiSendMultiControllerEvent(state->index, m_GamepadMask,
+                                   0, 0, 0, 0, 0, 0, 0);
+        return;
+    }
+
+    // Handle Select+L1+R1+Y as the menu overlay combo
+    if (state->buttons == (BACK_FLAG | LB_FLAG | RB_FLAG | Y_FLAG)) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Detected menu overlay gamepad combo");
+
+        MenuOverlay& menu = Session::get()->getMenuOverlay();
+        if (menu.isVisible()) {
+            menu.setVisible(false);
+        } else {
+            Session::get()->showMenuOverlay();
+        }
+
+        // Clear buttons down on this gamepad so they aren't forwarded to the host
+        LiSendMultiControllerEvent(state->index, m_GamepadMask,
+                                   0, 0, 0, 0, 0, 0, 0);
+        return;
+    }
+
+    // When the menu is visible, intercept D-pad and face buttons for navigation
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        MenuOverlay& menu = Session::get()->getMenuOverlay();
+
+        if (event->state == SDL_PRESSED) {
+            if (event->button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+                menu.navigateUp();
+            }
+            else if (event->button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+                menu.navigateDown();
+            }
+            else if (event->button == SDL_CONTROLLER_BUTTON_A) {
+                menu.confirm();
+            }
+            else if (event->button == SDL_CONTROLLER_BUTTON_B) {
+                menu.cancel();
+            }
+        }
+
+        // Consume the event — do not forward to host
         LiSendMultiControllerEvent(state->index, m_GamepadMask,
                                    0, 0, 0, 0, 0, 0, 0);
         return;

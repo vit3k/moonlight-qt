@@ -10,6 +10,7 @@
 #include "video/decoder.h"
 #include "audio/renderers/renderer.h"
 #include "video/overlaymanager.h"
+#include "video/menuoverlay.h"
 
 class SupportedVideoFormatList : public QList<int>
 {
@@ -123,7 +124,17 @@ public:
 
     void flushWindowEvents();
 
+    void setQuitAppOnExit(bool quitHostApp = true);
+
     void setShouldExit(bool quitHostApp = false);
+
+    void showMenuOverlay();
+    void hideMenuOverlay();
+
+    MenuOverlay& getMenuOverlay()
+    {
+        return m_MenuOverlay;
+    }
 
 signals:
     void stageStarting(QString stage);
@@ -262,6 +273,7 @@ private:
     int m_MouseEmulationRefCount;
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
+    bool m_QuitAppOnExit;
     bool m_ShouldExit;
 
     bool m_AsyncConnectionSuccess;
@@ -280,6 +292,7 @@ private:
     Uint32 m_DropAudioEndTime;
 
     Overlay::OverlayManager m_OverlayManager;
+    MenuOverlay m_MenuOverlay;
 
     static CONNECTION_LISTENER_CALLBACKS k_ConnCallbacks;
     static Session* s_ActiveSession;

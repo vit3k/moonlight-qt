@@ -113,6 +113,24 @@ SDL_Color OverlayManager::getOverlayColor(OverlayType type)
     return m_Overlays[type].color;
 }
 
+void OverlayManager::setOverlaySurface(OverlayType type, SDL_Surface* surface)
+{
+    // Swap in the new surface (may be nullptr to clear)
+    m_Overlays[type].enabled = (surface != nullptr);
+
+    SDL_Surface* oldSurface = (SDL_Surface*)SDL_AtomicSetPtr(
+        (void**)&m_Overlays[type].surface,
+        surface);
+
+    if (oldSurface != nullptr) {
+        SDL_FreeSurface(oldSurface);
+    }
+
+    if (m_Renderer != nullptr) {
+        m_Renderer->notifyOverlayUpdated(type);
+    }
+}
+
 void OverlayManager::setOverlayRenderer(IOverlayRenderer* renderer)
 {
     m_Renderer = renderer;
