@@ -191,15 +191,23 @@ Uint32 SdlInputHandler::mouseEmulationTimerCallback(Uint32 interval, void *param
 
 void SdlInputHandler::handleControllerAxisEvent(SDL_ControllerAxisEvent* event)
 {
-
-    // Block analog/trigger input when menu overlay is visible
-    if (Session::get()->getMenuOverlay().isVisible()) {
-        return;
-    }
-
     SDL_JoystickID gameControllerId = event->which;
     GamepadState* state = findStateForGamepad(gameControllerId);
     if (state == NULL) {
+        return;
+    }
+
+    // Block analog/trigger input when menu overlay is visible
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        state->lsX = 0;
+        state->lsY = 0;
+        state->rsX = 0;
+        state->rsY = 0;
+        state->lt = 0;
+        state->rt = 0;
+
+        // Push a neutral state so the host can't get stuck with stale analog input
+        sendGamepadState(state);
         return;
     }
 
@@ -455,6 +463,10 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
 
 void SdlInputHandler::handleControllerSensorEvent(SDL_ControllerSensorEvent* event)
 {
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        return;
+    }
+
     GamepadState* state = findStateForGamepad(event->which);
     if (state == NULL) {
         return;
@@ -490,6 +502,10 @@ void SdlInputHandler::handleControllerSensorEvent(SDL_ControllerSensorEvent* eve
 
 void SdlInputHandler::handleControllerTouchpadEvent(SDL_ControllerTouchpadEvent* event)
 {
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        return;
+    }
+
     GamepadState* state = findStateForGamepad(event->which);
     if (state == NULL) {
         return;
