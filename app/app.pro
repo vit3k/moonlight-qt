@@ -195,6 +195,7 @@ SOURCES += \
     settings/mappingmanager.cpp \
     gui/sdlgamepadkeynavigation.cpp \
     streaming/video/overlaymanager.cpp \
+    streaming/video/menuoverlay.cpp \
     backend/systemproperties.cpp \
     wm.cpp
 
