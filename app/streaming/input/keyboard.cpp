@@ -183,7 +183,8 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         return;
     }
 
-    // When the menu overlay is visible, route keyboard controls to it
+    // When the menu overlay is visible, route keyboard controls to it and
+    // consume all keyboard events so nothing is forwarded to the host.
     if (Session::get()->getMenuOverlay().isVisible()) {
         MenuOverlay& menu = Session::get()->getMenuOverlay();
         const SDL_Scancode scancode = event->keysym.scancode;
@@ -202,25 +203,22 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
                 scancode == SDL_SCANCODE_ESCAPE ||
                 scancode == SDL_SCANCODE_BACKSPACE;
 
-        if (isMenuNavigateUp || isMenuNavigateDown || isMenuConfirm || isMenuCancel) {
-            if (event->state == SDL_PRESSED) {
-                if (isMenuNavigateUp) {
-                    menu.navigateUp();
-                }
-                else if (isMenuNavigateDown) {
-                    menu.navigateDown();
-                }
-                else if (isMenuConfirm) {
-                    menu.confirm();
-                }
-                else if (isMenuCancel) {
-                    menu.cancel();
-                }
+        if (event->state == SDL_PRESSED) {
+            if (isMenuNavigateUp) {
+                menu.navigateUp();
             }
-
-            // Consume menu key events while the menu overlay is active
-            return;
+            else if (isMenuNavigateDown) {
+                menu.navigateDown();
+            }
+            else if (isMenuConfirm) {
+                menu.confirm();
+            }
+            else if (isMenuCancel) {
+                menu.cancel();
+            }
         }
+
+        return;
     }
 
     // Check for our special key combos

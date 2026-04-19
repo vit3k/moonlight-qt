@@ -281,6 +281,33 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
         return;
     }
 
+    // When the menu is visible, intercept navigation buttons and consume everything else.
+    // This must be checked BEFORE state->buttons is modified to prevent stale button state.
+    if (Session::get()->getMenuOverlay().isVisible()) {
+        MenuOverlay& menu = Session::get()->getMenuOverlay();
+
+        // Still allow the menu toggle combo to close the menu
+        if (event->state == SDL_PRESSED) {
+            if (event->button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+                menu.navigateUp();
+            }
+            else if (event->button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+                menu.navigateDown();
+            }
+            else if (event->button == SDL_CONTROLLER_BUTTON_A) {
+                menu.confirm();
+            }
+            else if (event->button == SDL_CONTROLLER_BUTTON_B) {
+                menu.cancel();
+            }
+        }
+
+        // Send neutral state and consume — do NOT modify state->buttons
+        LiSendMultiControllerEvent(state->index, m_GamepadMask,
+                                   0, 0, 0, 0, 0, 0, 0);
+        return;
+    }
+
     if (m_SwapFaceButtons) {
         switch (event->button) {
         case SDL_CONTROLLER_BUTTON_A:
@@ -428,30 +455,7 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
         return;
     }
 
-    // When the menu is visible, intercept D-pad and face buttons for navigation
-    if (Session::get()->getMenuOverlay().isVisible()) {
-        MenuOverlay& menu = Session::get()->getMenuOverlay();
-
-        if (event->state == SDL_PRESSED) {
-            if (event->button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-                menu.navigateUp();
-            }
-            else if (event->button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-                menu.navigateDown();
-            }
-            else if (event->button == SDL_CONTROLLER_BUTTON_A) {
-                menu.confirm();
-            }
-            else if (event->button == SDL_CONTROLLER_BUTTON_B) {
-                menu.cancel();
-            }
-        }
-
-        // Consume the event — do not forward to host
-        LiSendMultiControllerEvent(state->index, m_GamepadMask,
-                                   0, 0, 0, 0, 0, 0, 0);
-        return;
-    }
+    // When the menu is visible this is handled above, so we only reach here when menu is not visible.
 
     // Only send the gamepad state to the host if it's not in mouse emulation mode
     if (state->mouseEmulationTimer == 0) {
