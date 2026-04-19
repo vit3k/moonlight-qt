@@ -167,12 +167,14 @@ void MenuOverlay::repaint()
         if (hintSurf) {
             SDL_Texture* hintTex = SDL_CreateTextureFromSurface(ren, hintSurf);
             if (hintTex) {
-                SDL_Rect dst = {
-                    k_ItemPadding,
-                    k_ItemPadding + numItems * k_ItemHeight + (hintRowH - hintSurf->h) / 2,
-                    hintSurf->w, hintSurf->h
-                };
-                SDL_RenderCopy(ren, hintTex, nullptr, &dst);
+                // Clamp the hint text width to the panel width minus padding
+                int hintW = qMin(hintSurf->w, surfW - k_ItemPadding * 2);
+                int hintX = k_ItemPadding + (surfW - k_ItemPadding * 2 - hintW) / 2;
+                int hintY = k_ItemPadding + numItems * k_ItemHeight + (hintRowH - hintSurf->h) / 2;
+                
+                SDL_Rect src = {0, 0, hintW, hintSurf->h};
+                SDL_Rect dst = {hintX, hintY, hintW, hintSurf->h};
+                SDL_RenderCopy(ren, hintTex, &src, &dst);
                 SDL_DestroyTexture(hintTex);
             }
             SDL_FreeSurface(hintSurf);
