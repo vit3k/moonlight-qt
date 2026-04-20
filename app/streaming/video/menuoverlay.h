@@ -2,6 +2,7 @@
 
 #include "SDL_compat.h"
 #include <SDL_ttf.h>
+#include <QByteArray>
 #include <functional>
 #include <string>
 #include <vector>
@@ -38,6 +39,7 @@ private:
     int m_SelectedIndex;
     std::vector<MenuOverlayItem> m_Items;
     TTF_Font* m_Font;
+    QByteArray m_FontData;
 
     static constexpr int k_ItemHeight    = 56;
     static constexpr int k_ItemPadding   = 16;

@@ -21,6 +21,8 @@ void MenuOverlay::freeFont()
         TTF_CloseFont(m_Font);
         m_Font = nullptr;
     }
+
+    m_FontData.clear();
 }
 
 void MenuOverlay::setVisible(bool visible)
@@ -73,13 +75,13 @@ void MenuOverlay::repaint()
 
     // Lazily open font
     if (!m_Font) {
-        QByteArray fontData = Path::readDataFile("ModeSeven.ttf");
-        if (fontData.isEmpty()) {
+        m_FontData = Path::readDataFile("ModeSeven.ttf");
+        if (m_FontData.isEmpty()) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "MenuOverlay: font file not found");
             return;
         }
         m_Font = TTF_OpenFontRW(
-            SDL_RWFromConstMem(fontData.constData(), fontData.size()),
+            SDL_RWFromConstMem(m_FontData.constData(), m_FontData.size()),
             1, k_FontSize);
         if (!m_Font) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
