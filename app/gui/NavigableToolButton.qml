@@ -5,6 +5,23 @@ import QtQuick.Layouts 1.3
 ToolButton {
     property string iconSource
 
+    Keys.priority: Keys.BeforeItem
+
+    function focusNextVisibleInChain(forward) {
+        var next = nextItemInFocusChain(forward)
+        var safetyCounter = 0
+
+        while (next && next !== this && safetyCounter < 64) {
+            if (next.visible && next.enabled && next.activeFocusOnTab) {
+                next.forceActiveFocus(Qt.TabFocus)
+                return
+            }
+
+            next = next.nextItemInFocusChain(forward)
+            safetyCounter++
+        }
+    }
+
     activeFocusOnTab: true
 
     icon.source: iconSource
@@ -23,11 +40,23 @@ ToolButton {
         clicked()
     }
 
-    Keys.onRightPressed: {
-        nextItemInFocusChain(true).forceActiveFocus(Qt.TabFocus)
+    Keys.onRightPressed: function(event) {
+        focusNextVisibleInChain(true)
+        event.accepted = true
     }
 
-    Keys.onLeftPressed: {
-        nextItemInFocusChain(false).forceActiveFocus(Qt.TabFocus)
+    Keys.onLeftPressed: function(event) {
+        focusNextVisibleInChain(false)
+        event.accepted = true
+    }
+
+    Keys.onTabPressed: function(event) {
+        focusNextVisibleInChain(true)
+        event.accepted = true
+    }
+
+    Keys.onBacktabPressed: function(event) {
+        focusNextVisibleInChain(false)
+        event.accepted = true
     }
 }

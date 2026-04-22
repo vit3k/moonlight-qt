@@ -233,11 +233,38 @@ ApplicationWindow {
         }
     }
 
+    function launchDesktopFromCurrentView()
+    {
+        var item = stackView.currentItem
+        if (item && item["launchDesktop"]) {
+            item["launchDesktop"]()
+        }
+    }
+
+    function refreshGamesFromCurrentView()
+    {
+        var item = stackView.currentItem
+        var gameModel = item ? item["gameModel"] : null
+        if (gameModel && gameModel["refresh"]) {
+            gameModel["refresh"]()
+        }
+    }
+
     header: ToolBar {
         id: toolBar
-        height: 60
+        height: 72
         anchors.topMargin: 5
         anchors.bottomMargin: 5
+        Material.background: "transparent"
+
+        background: Rectangle {
+            anchors.fill: parent
+            anchors.margins: 8
+            radius: 12
+            color: Qt.rgba(0, 0, 0, 0.22)
+            border.color: Qt.rgba(1, 1, 1, 0.10)
+            border.width: 1
+        }
 
         Label {
             id: titleLabel
@@ -252,8 +279,8 @@ ApplicationWindow {
 
         RowLayout {
             spacing: 10
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
             anchors.fill: parent
 
             NavigableToolButton {
@@ -333,6 +360,46 @@ ApplicationWindow {
 
                 onClicked: {
                     addPcDialog.open()
+                }
+
+                Keys.onDownPressed: {
+                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                }
+            }
+
+            NavigableToolButton {
+                id: launchDesktopButton
+                visible: stackView.currentItem instanceof AppView
+
+                iconSource: "qrc:/res/desktop_windows-48px.svg"
+
+                ToolTip.delay: 1000
+                ToolTip.timeout: 3000
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Launch Desktop")
+
+                onClicked: {
+                    launchDesktopFromCurrentView()
+                }
+
+                Keys.onDownPressed: {
+                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                }
+            }
+
+            NavigableToolButton {
+                id: refreshGamesButton
+                visible: stackView.currentItem instanceof AppView
+
+                iconSource: "qrc:/res/update.svg"
+
+                ToolTip.delay: 1000
+                ToolTip.timeout: 3000
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Refresh")
+
+                onClicked: {
+                    refreshGamesFromCurrentView()
                 }
 
                 Keys.onDownPressed: {
@@ -442,6 +509,22 @@ ApplicationWindow {
                 ToolTip.timeout: 3000
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Settings") + (settingsShortcut.nativeText ? (" ("+settingsShortcut.nativeText+")") : "")
+            }
+        }
+
+        Connections {
+            target: (stackView.currentItem instanceof AppView) ? stackView.currentItem : null
+
+            function onFocusToolbarRequested() {
+                if (launchDesktopButton.visible) {
+                    launchDesktopButton.forceActiveFocus(Qt.TabFocus)
+                }
+                else if (refreshGamesButton.visible) {
+                    refreshGamesButton.forceActiveFocus(Qt.TabFocus)
+                }
+                else {
+                    toolBar.forceActiveFocus(Qt.TabFocus)
+                }
             }
         }
     }

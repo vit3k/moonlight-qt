@@ -1575,8 +1575,11 @@ void Session::showMenuOverlay()
             m_OverlayManager.setOverlayState(Overlay::OverlayDebug,
                 !m_OverlayManager.isOverlayEnabled(Overlay::OverlayDebug));
         }},
-        {"Disconnect",       [this]{ m_MenuOverlay.setVisible(false); interrupt(); }},
-        {"Quit Game + Exit", [this]{ m_MenuOverlay.setVisible(false); setShouldExit(true); interrupt(); }}
+        {"Close Session",    [this]{
+            m_MenuOverlay.setVisible(false);
+            setQuitAppOnExit();
+            interrupt();
+        }}
     });
     m_MenuOverlay.setVisible(true);
 }

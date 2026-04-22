@@ -188,6 +188,7 @@ SOURCES += \
     streaming/audio/renderers/sdlaud.cpp \
     gui/computermodel.cpp \
     gui/appmodel.cpp \
+    gui/customgamemodel.cpp \
     streaming/bandwidth.cpp \
     streaming/streamutils.cpp \
     backend/autoupdatechecker.cpp \
@@ -226,6 +227,7 @@ HEADERS += \
     streaming/audio/renderers/sdl.h \
     gui/computermodel.h \
     gui/appmodel.h \
+    gui/customgamemodel.h \
     streaming/video/decoder.h \
     streaming/bandwidth.h \
     streaming/streamutils.h \
