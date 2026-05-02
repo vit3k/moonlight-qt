@@ -6,6 +6,30 @@
 #include <QNetworkRequest>
 #include <QUrl>
 
+namespace {
+
+QString normalizePosterUrl(const QString& posterUrl, const QString& hostAddress)
+{
+    const QString trimmedPosterUrl = posterUrl.trimmed();
+    if (trimmedPosterUrl.isEmpty()) {
+        return QString();
+    }
+
+    const QUrl parsedUrl(trimmedPosterUrl);
+    if (parsedUrl.isValid() && !parsedUrl.scheme().isEmpty()) {
+        return parsedUrl.toString();
+    }
+
+    if (hostAddress.isEmpty()) {
+        return trimmedPosterUrl;
+    }
+
+    QUrl baseUrl(QString("http://%1:7878").arg(hostAddress));
+    return baseUrl.resolved(QUrl(trimmedPosterUrl)).toString();
+}
+
+}
+
 CustomGameModel::CustomGameModel(QObject *parent)
     : QAbstractListModel(parent),
       m_Nam(new QNetworkAccessManager(this))
@@ -144,7 +168,7 @@ void CustomGameModel::onReplyFinished(QNetworkReply* reply)
         entry.id = obj["id"].toString();
         entry.name = obj["name"].toString();
         entry.source = obj["source"].toString();
-        entry.posterUrl = obj["poster_url"].toString();
+        entry.posterUrl = normalizePosterUrl(obj["poster_url"].toString(), m_HostAddress);
         newGames.append(entry);
     }
 
