@@ -128,6 +128,10 @@ public:
 
     void setShouldExit(bool quitHostApp = false);
 
+    void setReconnectOnExit(bool reconnect = true);
+
+    void setSuspendOnExit(bool suspend = true);
+
     void showMenuOverlay();
     void hideMenuOverlay();
 
@@ -148,6 +152,10 @@ signals:
     void quitStarting();
 
     void sessionFinished(int portTestResult);
+
+    void reconnectRequested();
+
+    void suspendStarting();
 
     // Emitted after sessionFinished() when the session is ready to be destroyed
     void readyForDeletion();
@@ -274,6 +282,8 @@ private:
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
     bool m_QuitAppOnExit;
+    bool m_ReconnectOnExit;
+    bool m_SuspendOnExit;
     bool m_ShouldExit;
 
     bool m_AsyncConnectionSuccess;

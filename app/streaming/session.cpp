@@ -4,8 +4,13 @@
 #include "backend/richpresencemanager.h"
 
 #include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QEventLoop>
+#include <QElapsedTimer>
+#include <QReadLocker>
 #include <QUrl>
+#include <QHostAddress>
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -50,6 +55,25 @@
 #endif
 
 #define CONN_TEST_SERVER "qt.conntest.moonlight-stream.org"
+
+static QUrl buildCompanionApiUrl(const QString& hostAddress, const QString& path)
+{
+    QString host = hostAddress.trimmed();
+
+    // Strip optional IPv6 brackets if already present.
+    if (host.startsWith('[') && host.endsWith(']') && host.size() > 2) {
+        host = host.mid(1, host.size() - 2);
+    }
+
+    // For IPv6, URLs must be bracketed. Scope IDs (link-local addresses)
+    // require escaping '%' as "%25" inside URL host literals.
+    if (QHostAddress(host).protocol() == QAbstractSocket::IPv6Protocol) {
+        host.replace("%", "%25");
+        return QUrl(QString("http://[%1]:7878%2").arg(host, path));
+    }
+
+    return QUrl(QString("http://%1:7878%2").arg(host, path));
+}
 
 CONNECTION_LISTENER_CALLBACKS Session::k_ConnCallbacks = {
     Session::clStageStarting,
@@ -566,6 +590,8 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_QuitAppOnExit(false),
+      m_ReconnectOnExit(false),
+    m_SuspendOnExit(false),
       m_ShouldExit(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
@@ -1257,9 +1283,21 @@ private:
                 !m_Session->m_UnexpectedTermination &&
                 (m_Session->m_QuitAppOnExit || m_Session->m_Preferences->quitAppAfter);
 
+        // Check if we should reconnect
+        bool shouldReconnect = m_Session->m_ReconnectOnExit && !m_Session->m_UnexpectedTermination;
+
+        // Check if we should suspend the PC after disconnect
+        bool shouldSuspend = m_Session->m_SuspendOnExit && !m_Session->m_UnexpectedTermination;
+
         // Notify the UI
         if (shouldQuit) {
             emit m_Session->quitStarting();
+        }
+        else if (shouldReconnect) {
+            emit m_Session->reconnectRequested();
+        }
+        else if (shouldSuspend) {
+            emit m_Session->suspendStarting();
         }
         else {
             emit m_Session->sessionFinished(m_Session->m_PortTestResults);
@@ -1285,6 +1323,48 @@ private:
             }
 
             // Session is finished now
+            emit m_Session->sessionFinished(m_Session->m_PortTestResults);
+        }
+        else if (shouldSuspend) {
+            QUrl suspendUrl = buildCompanionApiUrl(m_Session->m_Computer->activeAddress.address(), "/suspend");
+            QNetworkRequest request(suspendUrl);
+            request.setTransferTimeout(3000);
+
+            QNetworkAccessManager nam;
+            QNetworkReply* reply = nam.get(request);
+
+            QEventLoop waitForReply;
+            QObject::connect(reply, &QNetworkReply::finished, &waitForReply, &QEventLoop::quit);
+            waitForReply.exec();
+
+            if (reply->error() != QNetworkReply::NoError) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Suspend request failed: %s",
+                            reply->errorString().toUtf8().constData());
+            }
+
+            reply->deleteLater();
+
+            // Wait until the computer monitor reports the host is offline,
+            // so the UI only returns to PC view once suspend has really started.
+            QElapsedTimer offlineWait;
+            offlineWait.start();
+
+            while (offlineWait.elapsed() < 35000) {
+                bool isOffline = false;
+                {
+                    QReadLocker lock(&m_Session->m_Computer->lock);
+                    isOffline = (m_Session->m_Computer->state == NvComputer::CS_OFFLINE);
+                }
+
+                if (isOffline) {
+                    break;
+                }
+
+                QThread::msleep(250);
+            }
+
+            // Session is finished now, return to the PC list UI.
             emit m_Session->sessionFinished(m_Session->m_PortTestResults);
         }
 
@@ -1546,27 +1626,10 @@ void Session::showMenuOverlay()
         {"Resume Stream",    [this]{ m_MenuOverlay.setVisible(false); }},
         {"Suspend PC",       [this]{
             m_MenuOverlay.setVisible(false);
-            // First end the stream session gracefully, then suspend once sessionFinished fires.
-            // This ensures the display switch happens cleanly on wake.
-            setQuitAppOnExit();
-            QString suspendUrl = QString("http://%1:7878/suspend").arg(m_Computer->activeAddress.address());
-            QObject::connect(this, &Session::sessionFinished, this,
-                             [suspendUrl](int) {
-                                 QNetworkRequest request((QUrl(suspendUrl)));
-                                 request.setTransferTimeout(3000);
-                                 auto* nam = new QNetworkAccessManager();
-                                 QObject::connect(nam, &QNetworkAccessManager::finished,
-                                                  nam, [nam](QNetworkReply* reply) {
-                                                      if (reply->error() != QNetworkReply::NoError) {
-                                                          SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                                                                      "Suspend request failed: %s",
-                                                                      reply->errorString().toUtf8().constData());
-                                                      }
-                                                      reply->deleteLater();
-                                                      nam->deleteLater();
-                                                  });
-                                 nam->post(request, QByteArray());
-                             }, Qt::SingleShotConnection);
+            // First end the stream session gracefully, then suspend the PC.
+            // UI will show a suspending message until request completion.
+            setSuspendOnExit();
+            emit suspendStarting();
             interrupt();
         }},
         {"Toggle Fullscreen",[this]{ m_MenuOverlay.setVisible(false); toggleFullscreen(); }},
@@ -1574,6 +1637,41 @@ void Session::showMenuOverlay()
             m_MenuOverlay.setVisible(false);
             m_OverlayManager.setOverlayState(Overlay::OverlayDebug,
                 !m_OverlayManager.isOverlayEnabled(Overlay::OverlayDebug));
+        }},
+        {"Toggle HDR",       [this]{
+            m_MenuOverlay.setVisible(false);
+            m_Preferences->enableHdr = !m_Preferences->enableHdr;
+            m_Preferences->save();
+            // Set flag to reconnect after this session ends
+            setReconnectOnExit(true);
+            interrupt();
+        }},
+        {"Exit Game",        [this]{
+            m_MenuOverlay.setVisible(false);
+
+            // Close session exactly like "Close Session", then notify custom backend.
+            QUrl stopUrl = buildCompanionApiUrl(m_Computer->activeAddress.address(), "/games/running/stop");
+            QObject::connect(this, &Session::sessionFinished, this,
+                             [stopUrl](int) {
+                                 QNetworkRequest request(stopUrl);
+                                 request.setTransferTimeout(3000);
+
+                                 auto* nam = new QNetworkAccessManager();
+                                 QObject::connect(nam, &QNetworkAccessManager::finished,
+                                                  nam, [nam](QNetworkReply* reply) {
+                                                      if (reply->error() != QNetworkReply::NoError) {
+                                                          SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                                                                      "Stop running game request failed: %s",
+                                                                      reply->errorString().toUtf8().constData());
+                                                      }
+                                                      reply->deleteLater();
+                                                      nam->deleteLater();
+                                                  });
+                                 nam->post(request, QByteArray());
+                             }, Qt::SingleShotConnection);
+
+            setQuitAppOnExit();
+            interrupt();
         }},
         {"Close Session",    [this]{
             m_MenuOverlay.setVisible(false);
@@ -1592,6 +1690,16 @@ void Session::hideMenuOverlay()
 void Session::setQuitAppOnExit(bool quitHostApp)
 {
     m_QuitAppOnExit = quitHostApp;
+}
+
+void Session::setReconnectOnExit(bool reconnect)
+{
+    m_ReconnectOnExit = reconnect;
+}
+
+void Session::setSuspendOnExit(bool suspend)
+{
+    m_SuspendOnExit = suspend;
 }
 
 class AsyncConnectionStartThread : public QThread

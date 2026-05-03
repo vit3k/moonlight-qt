@@ -13,6 +13,29 @@ Item {
                                            qsTr("Starting %1...").arg(appName)
     property bool isResume : false
     property bool quitAfter : false
+    property int uiFocusRetryCount : 0
+    property var gameModel : null
+    property int gameIndex : -1
+    property bool pendingReconnect : false
+    property bool pendingSuspend : false
+
+    function restoreMoonlightUiFocus()
+    {
+        if (!window) {
+            return
+        }
+
+        // Ensure the UI window is shown and not minimized, then ask compositor
+        // to focus us. SteamOS may ignore this occasionally, so we retry below.
+        window.visible = true
+
+        if (window.visibility === Window.Minimized) {
+            window.visibility = Window.Windowed
+        }
+
+        window.raise()
+        window.requestActivate()
+    }
 
     function stageStarting(stage)
     {
@@ -55,12 +78,57 @@ Item {
         var component = Qt.createComponent("QuitSegue.qml")
         stackView.replace(stackView.currentItem, component.createObject(stackView, {"appName": appName}), StackView.Immediate)
 
-        // Show the Qt window again to show quit segue
-        window.visible = true
+        // Show and focus the Qt window again to show quit segue
+        restoreMoonlightUiFocus()
+    }
+
+    function reconnectSession()
+    {
+        // Old session is still being torn down at this point.
+        // Mark reconnect as pending and wait for readyForDeletion.
+        pendingReconnect = true
+
+        stageText = qsTr("Restarting stream...")
+        stageSpinner.visible = true
+        stageLabel.visible = true
+        hintText.visible = false
+
+        uiFocusRetryCount = 3
+        restoreMoonlightUiFocus()
+        refocusTimer.restart()
+    }
+
+    function suspendStarting()
+    {
+        pendingSuspend = true
+
+        stageText = qsTr("Suspending PC...")
+        stageSpinner.visible = true
+        stageLabel.visible = true
+        hintText.visible = false
+
+        uiFocusRetryCount = 3
+        restoreMoonlightUiFocus()
+        refocusTimer.restart()
     }
 
     function sessionFinished(portTestResult)
     {
+        if (pendingSuspend) {
+            pendingSuspend = false
+
+            // Return to the PC list when suspend completes.
+            while (stackView.depth > 1) {
+                stackView.pop(StackView.Immediate)
+            }
+
+            SdlGamepadKeyNavigation.enable()
+            uiFocusRetryCount = 3
+            restoreMoonlightUiFocus()
+            refocusTimer.restart()
+            return
+        }
+
         if (portTestResult !== 0 && portTestResult !== -1 && streamSegueErrorDialog.text) {
             streamSegueErrorDialog.text += "\n\n" + qsTr("This PC's Internet connection is blocking Moonlight. Streaming over the Internet may not work while connected to this network.")
         }
@@ -78,8 +146,11 @@ Item {
             Qt.quit()
         }
         else {
-            // Show the Qt window again after streaming
-            window.visible = true
+            // Show/focus the Qt window again after streaming.
+            // On SteamOS, focus can transiently return to Steam, so retry briefly.
+            uiFocusRetryCount = 3
+            restoreMoonlightUiFocus()
+            refocusTimer.restart()
 
             // Display any launch errors. We do this after
             // the Qt UI is visible again to prevent losing
@@ -94,6 +165,57 @@ Item {
 
     function sessionReadyForDeletion()
     {
+        if (pendingReconnect) {
+            pendingReconnect = false
+
+            if (!gameModel) {
+                session = null
+                gc()
+                sessionFinished(0)
+                return
+            }
+
+            var newSession = (gameIndex >= 0) ?
+                             gameModel.createSessionForGame(gameIndex) :
+                             gameModel.createDesktopSession()
+
+            if (!newSession) {
+                session = null
+                gc()
+                sessionFinished(0)
+                return
+            }
+
+            var component = Qt.createComponent("StreamSegue.qml")
+            if (component.status !== Component.Ready) {
+                console.error("Failed to create StreamSegue for reconnect")
+                session = null
+                gc()
+                sessionFinished(0)
+                return
+            }
+
+            var segue = component.createObject(stackView, {
+                "appName": appName,
+                "session": newSession,
+                "gameModel": gameModel,
+                "gameIndex": gameIndex,
+                "isResume": isResume,
+                "quitAfter": quitAfter
+            })
+
+            if (segue) {
+                stackView.replace(stackView.currentItem, segue, StackView.Immediate)
+                return
+            }
+
+            console.error("Failed to instantiate StreamSegue for reconnect")
+            session = null
+            gc()
+            sessionFinished(0)
+            return
+        }
+
         // Garbage collect the Session object since it's pretty heavyweight
         // and keeps other libraries (like SDL_TTF) around until it is deleted.
         session = null
@@ -118,6 +240,8 @@ Item {
         session.connectionStarted.connect(connectionStarted)
         session.displayLaunchError.connect(displayLaunchError)
         session.quitStarting.connect(quitStarting)
+        session.reconnectRequested.connect(reconnectSession)
+        session.suspendStarting.connect(suspendStarting)
         session.sessionFinished.connect(sessionFinished)
         session.readyForDeletion.connect(sessionReadyForDeletion)
 
@@ -128,6 +252,23 @@ Item {
         // Kick off the stream
         spinnerTimer.start()
         streamLoader.active = true
+    }
+
+    Timer {
+        id: refocusTimer
+        interval: 200
+        repeat: true
+        running: false
+
+        onTriggered: {
+            if (uiFocusRetryCount <= 0) {
+                stop()
+                return
+            }
+
+            restoreMoonlightUiFocus()
+            uiFocusRetryCount--
+        }
     }
 
     Timer {

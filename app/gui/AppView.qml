@@ -32,6 +32,8 @@ Page {
         var segue = component.createObject(stackView, {
             "appName": qsTr("Desktop"),
             "session": gameListPage.gameModel.createDesktopSession(),
+            "gameModel": gameListPage.gameModel,
+            "gameIndex": -1,
             "isResume": false
         })
         if (segue) {
@@ -138,6 +140,8 @@ Page {
                 var segue = component.createObject(stackView, {
                     "appName": model.name,
                     "session": gameListPage.gameModel.createSessionForGame(index),
+                    "gameModel": gameListPage.gameModel,
+                    "gameIndex": index,
                     "isResume": false
                 })
                 if (segue) {
