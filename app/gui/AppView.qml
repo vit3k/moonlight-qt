@@ -10,6 +10,7 @@ import SdlGamepadKeyNavigation 1.0
 Page {
     property int computerIndex
     property CustomGameModel gameModel: createModel()
+    property bool stoppingRunningGame: false
     property int gameTileMinWidth: 210
     property int gameTileGap: 16
     property real posterAspectRatio: 1.5 // 2:3 width:height -> height = width * 1.5
@@ -41,19 +42,92 @@ Page {
         }
     }
 
+    function resumeRunningGame() {
+        var component = Qt.createComponent("StreamSegue.qml")
+        var segue = component.createObject(stackView, {
+            "appName": gameModel.runningGameName,
+            "session": gameModel.createSessionForRunningGame(),
+            "gameModel": gameModel,
+            "gameIndex": -1,
+            "isResume": true
+        })
+        if (segue) {
+            stackView.push(segue)
+        }
+    }
+
+    function requestStopRunningGame() {
+        if (stoppingRunningGame) {
+            return
+        }
+
+        stoppingRunningGame = true
+        gameModel.stopRunningGame()
+    }
+
+    function focusNextRunningGameAction(currentItem, forward) {
+        var next = currentItem.nextItemInFocusChain(forward)
+        var safetyCounter = 0
+
+        while (next && next !== currentItem && safetyCounter < 32) {
+            if (next.visible && next.enabled && next.activeFocusOnTab) {
+                next.forceActiveFocus(Qt.TabFocus)
+                return
+            }
+
+            next = next.nextItemInFocusChain(forward)
+            safetyCounter++
+        }
+    }
+
     StackView.onActivated: {
-        gameList.forceActiveFocus()
-        if (gameList.count > 0 && SdlGamepadKeyNavigation.getConnectedGamepads() > 0) {
-            gameList.currentIndex = 0
+        gameModel.fetchRunningGame()
+
+        if (gameModel.hasRunningGame) {
+            returnToGameButton.forceActiveFocus()
+        }
+        else {
+            gameList.forceActiveFocus()
+            if (gameList.count > 0 && SdlGamepadKeyNavigation.getConnectedGamepads() > 0) {
+                gameList.currentIndex = 0
+            }
         }
     }
 
     header: null
 
+    Connections {
+        target: gameModel
+
+        function onRunningGameChanged() {
+            if (gameModel.hasRunningGame) {
+                returnToGameButton.forceActiveFocus()
+            }
+            else {
+                stoppingRunningGame = false
+            }
+        }
+
+        function onRunningGameStopCompleted(success, errorString) {
+            stoppingRunningGame = false
+
+            if (!success) {
+                stopGameErrorDialog.text = errorString && errorString.length > 0 ?
+                                           errorString :
+                                           qsTr("Failed to exit the running game.")
+                stopGameErrorDialog.open()
+                return
+            }
+
+            gameModel.refresh()
+            gameList.forceActiveFocus()
+        }
+    }
+
     BusyIndicator {
         anchors.centerIn: parent
-        running: gameModel.loading
-        visible: gameModel.loading
+        running: gameModel.loading || gameModel.checkingRunningGame
+        visible: running
     }
 
     Label {
@@ -64,14 +138,14 @@ Page {
         wrapMode: Text.Wrap
         width: parent.width * 0.8
         horizontalAlignment: Text.AlignHCenter
-        visible: !gameModel.loading && gameModel.errorString.length > 0
+        visible: !gameModel.loading && !gameModel.checkingRunningGame && !gameModel.hasRunningGame && gameModel.errorString.length > 0
     }
 
     Label {
         anchors.centerIn: parent
         text: qsTr("No games found")
         font.pointSize: 16
-        visible: !gameModel.loading && gameModel.errorString.length === 0 && gameList.count === 0
+        visible: !gameModel.loading && !gameModel.checkingRunningGame && !gameModel.hasRunningGame && gameModel.errorString.length === 0 && gameList.count === 0
     }
 
     GridView {
@@ -83,7 +157,7 @@ Page {
         anchors.leftMargin: Math.floor(gameListPage.gameTileGap / 2)
         anchors.rightMargin: Math.floor(gameListPage.gameTileGap / 2)
         anchors.bottomMargin: Math.floor(gameListPage.gameTileGap / 2)
-        visible: !gameModel.loading && gameModel.errorString.length === 0
+        visible: !gameModel.loading && !gameModel.checkingRunningGame && !gameModel.hasRunningGame && gameModel.errorString.length === 0
         model: gameModel
         focus: true
         clip: true
@@ -214,5 +288,149 @@ Page {
                 }
             }
         }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: Material.backgroundColor
+        visible: !gameModel.loading && !gameModel.checkingRunningGame && gameModel.hasRunningGame
+
+        Flickable {
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: runningGameLayout.implicitHeight + 40
+            clip: true
+
+            ColumnLayout {
+                id: runningGameLayout
+                x: Math.floor((parent.width - width) / 2)
+                y: Math.max(20, Math.floor((parent.height - implicitHeight) / 2))
+                width: Math.min(parent.width * 0.8, 520)
+                spacing: 18
+
+                Item {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: Math.min(220, parent.width)
+                    Layout.preferredHeight: Math.floor(Layout.preferredWidth * gameListPage.posterAspectRatio)
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 10
+                        color: Qt.rgba(1, 1, 1, 0.05)
+                        border.color: Material.dividerColor
+                        border.width: 1
+                        clip: true
+
+                        Image {
+                            anchors.fill: parent
+                            source: gameModel.runningGamePosterUrl
+                            visible: !!gameModel.runningGamePosterUrl && gameModel.runningGamePosterUrl.length > 0
+                            asynchronous: true
+                            cache: true
+                            fillMode: Image.PreserveAspectCrop
+                        }
+
+                        Image {
+                            anchors.centerIn: parent
+                            source: "qrc:/res/ic_videogame_asset_white_48px.svg"
+                            visible: !gameModel.runningGamePosterUrl || gameModel.runningGamePosterUrl.length === 0
+                            width: 56
+                            height: 56
+                            opacity: 0.9
+                        }
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: gameModel.runningGameName
+                    horizontalAlignment: Text.AlignHCenter
+                    font.pointSize: 20
+                    font.bold: true
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                }
+
+                Button {
+                    id: returnToGameButton
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: Math.min(320, parent.width)
+                    activeFocusOnTab: true
+                    text: qsTr("Return to game")
+                    onClicked: gameListPage.resumeRunningGame()
+
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEnterPressed: clicked()
+                    Keys.onDownPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(returnToGameButton, true)
+                        event.accepted = true
+                    }
+                    Keys.onRightPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(returnToGameButton, true)
+                        event.accepted = true
+                    }
+                    Keys.onTabPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(returnToGameButton, true)
+                        event.accepted = true
+                    }
+                    Keys.onUpPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(returnToGameButton, false)
+                        event.accepted = true
+                    }
+                    Keys.onLeftPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(returnToGameButton, false)
+                        event.accepted = true
+                    }
+                    Keys.onBacktabPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(returnToGameButton, false)
+                        event.accepted = true
+                    }
+                }
+
+                Button {
+                    id: exitGameButton
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: Math.min(320, parent.width)
+                    activeFocusOnTab: true
+                    text: gameListPage.stoppingRunningGame ? qsTr("Exiting game...") : qsTr("Exit game")
+                    enabled: !gameListPage.stoppingRunningGame
+                    onClicked: gameListPage.requestStopRunningGame()
+
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEnterPressed: clicked()
+                    Keys.onDownPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(exitGameButton, true)
+                        event.accepted = true
+                    }
+                    Keys.onRightPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(exitGameButton, true)
+                        event.accepted = true
+                    }
+                    Keys.onTabPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(exitGameButton, true)
+                        event.accepted = true
+                    }
+                    Keys.onUpPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(exitGameButton, false)
+                        event.accepted = true
+                    }
+                    Keys.onLeftPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(exitGameButton, false)
+                        event.accepted = true
+                    }
+                    Keys.onBacktabPressed: function(event) {
+                        gameListPage.focusNextRunningGameAction(exitGameButton, false)
+                        event.accepted = true
+                    }
+                }
+            }
+        }
+    }
+
+    NavigableMessageDialog {
+        id: stopGameErrorDialog
+        closePolicy: Popup.CloseOnEscape
+        standardButtons: Dialog.Ok
     }
 }

@@ -47,6 +47,7 @@ void CustomGameModel::initialize(ComputerManager* computerManager, int computerI
     lock.unlock();
 
     fetchGames();
+    fetchRunningGame();
 }
 
 Session* CustomGameModel::createSessionForGame(int gameIndex)
@@ -65,6 +66,44 @@ Session* CustomGameModel::createDesktopSession()
 
     NvApp desktopApp = resolveDesktopApp();
     return new Session(m_Computer, desktopApp);
+}
+
+Session* CustomGameModel::createSessionForRunningGame()
+{
+    Q_ASSERT(m_Computer != nullptr);
+
+    NvApp appToResume;
+
+    {
+        QReadLocker lock(&m_Computer->lock);
+
+        // Session asserts that the selected app ID matches the host-reported
+        // currentGameId (or that currentGameId is 0). The /games/running
+        // endpoint may expose a store-specific ID that doesn't match Moonlight's
+        // app ID, so always resume using the host state.
+        if (m_Computer->currentGameId != 0) {
+            for (const NvApp& app : m_Computer->appList) {
+                if (app.id == m_Computer->currentGameId) {
+                    appToResume = app;
+                    break;
+                }
+            }
+
+            // Some hosts may report a currentGameId that isn't present in
+            // appList (for example, launcher-managed titles). In that case,
+            // still use the host-reported ID so Session's invariant holds.
+            if (!appToResume.isInitialized()) {
+                appToResume.id = m_Computer->currentGameId;
+                appToResume.name = m_RunningGame.name.isEmpty() ? QStringLiteral("Running Game") : m_RunningGame.name;
+            }
+        }
+    }
+
+    if (!appToResume.isInitialized()) {
+        appToResume = resolveDesktopApp();
+    }
+
+    return new Session(m_Computer, appToResume);
 }
 
 void CustomGameModel::postGameLaunch(const QString& gameId)
@@ -87,6 +126,7 @@ void CustomGameModel::postGameLaunch(const QString& gameId)
 void CustomGameModel::refresh()
 {
     fetchGames();
+    fetchRunningGame();
 }
 
 QString CustomGameModel::getGameIdAt(int index) const
@@ -108,6 +148,31 @@ void CustomGameModel::fetchGames()
     setErrorString(QString());
     QString url = QString("http://%1:7878/games").arg(m_HostAddress);
     m_Nam->get(QNetworkRequest(QUrl(url)));
+}
+
+void CustomGameModel::fetchRunningGame()
+{
+    if (m_HostAddress.isEmpty()) {
+        clearRunningGame();
+        return;
+    }
+
+    setCheckingRunningGame(true);
+    QString url = QString("http://%1:7878/games/running").arg(m_HostAddress);
+    m_Nam->get(QNetworkRequest(QUrl(url)));
+}
+
+void CustomGameModel::stopRunningGame()
+{
+    if (m_HostAddress.isEmpty()) {
+        emit runningGameStopCompleted(false, QStringLiteral("Host address is empty"));
+        return;
+    }
+
+    QString url = QString("http://%1:7878/games/running/stop").arg(m_HostAddress);
+    QNetworkRequest request((QUrl(url)));
+    request.setTransferTimeout(5000);
+    m_Nam->post(request, QByteArray());
 }
 
 NvApp CustomGameModel::resolveDesktopApp() const
@@ -134,17 +199,54 @@ NvApp CustomGameModel::resolveDesktopApp() const
 
 void CustomGameModel::onReplyFinished(QNetworkReply* reply)
 {
+    const QUrl requestUrl = reply->request().url();
+    const QString requestPath = requestUrl.path();
+
     reply->deleteLater();
 
-    // Ignore replies from POST /games/launch and other non-GET requests
+    if (reply->operation() == QNetworkAccessManager::PostOperation) {
+        if (requestPath.endsWith("/games/running/stop")) {
+            if (reply->error() != QNetworkReply::NoError) {
+                emit runningGameStopCompleted(false, reply->errorString());
+            }
+            else {
+                clearRunningGame();
+                emit runningGameStopCompleted(true, QString());
+            }
+        }
+
+        // Ignore POST /games/launch and any other POST responses
+        return;
+    }
+
     if (reply->operation() != QNetworkAccessManager::GetOperation) {
         return;
     }
 
-    setLoading(false);
+    const bool isGamesRequest = requestPath.endsWith("/games") &&
+                                !requestPath.endsWith("/games/running") &&
+                                !requestPath.endsWith("/games/running/stop");
+    const bool isRunningGameRequest = requestPath.endsWith("/games/running");
+
+    if (!isGamesRequest && !isRunningGameRequest) {
+        return;
+    }
+
+    if (isGamesRequest) {
+        setLoading(false);
+    }
+
+    if (isRunningGameRequest) {
+        setCheckingRunningGame(false);
+    }
 
     if (reply->error() != QNetworkReply::NoError) {
-        setErrorString(reply->errorString());
+        if (isGamesRequest) {
+            setErrorString(reply->errorString());
+        }
+        else {
+            clearRunningGame();
+        }
         return;
     }
 
@@ -152,29 +254,103 @@ void CustomGameModel::onReplyFinished(QNetworkReply* reply)
     QJsonParseError parseError;
     QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
     if (parseError.error != QJsonParseError::NoError) {
-        setErrorString(QString("JSON parse error: %1").arg(parseError.errorString()));
+        if (isGamesRequest) {
+            setErrorString(QString("JSON parse error: %1").arg(parseError.errorString()));
+        }
+        else {
+            clearRunningGame();
+        }
         return;
     }
 
-    if (!doc.isArray()) {
-        setErrorString("Expected JSON array");
+    if (isGamesRequest) {
+        if (!doc.isArray()) {
+            setErrorString("Expected JSON array");
+            return;
+        }
+
+        QVector<GameEntry> newGames;
+        for (const QJsonValue& val : doc.array()) {
+            QJsonObject obj = val.toObject();
+            GameEntry entry;
+            entry.id = obj["id"].toString();
+            entry.name = obj["name"].toString();
+            entry.source = obj["source"].toString();
+            entry.posterUrl = normalizePosterUrl(obj["poster_url"].toString(), m_HostAddress);
+            newGames.append(entry);
+        }
+
+        beginResetModel();
+        m_Games = newGames;
+        endResetModel();
+
+        // If we already detected a running game but it had no poster URL,
+        // backfill it from the full games list.
+        if (!m_RunningGame.id.isEmpty() && m_RunningGame.posterUrl.isEmpty()) {
+            const QString posterUrl = posterUrlForGameId(m_RunningGame.id);
+            if (!posterUrl.isEmpty()) {
+                GameEntry updatedRunningGame = m_RunningGame;
+                updatedRunningGame.posterUrl = posterUrl;
+                setRunningGame(updatedRunningGame);
+            }
+        }
+
         return;
     }
 
-    QVector<GameEntry> newGames;
-    for (const QJsonValue& val : doc.array()) {
-        QJsonObject obj = val.toObject();
-        GameEntry entry;
-        entry.id = obj["id"].toString();
-        entry.name = obj["name"].toString();
-        entry.source = obj["source"].toString();
-        entry.posterUrl = normalizePosterUrl(obj["poster_url"].toString(), m_HostAddress);
-        newGames.append(entry);
+    // /games/running endpoint
+    QJsonObject runningObj;
+    if (doc.isArray()) {
+        QJsonArray arr = doc.array();
+        if (arr.isEmpty()) {
+            clearRunningGame();
+            return;
+        }
+        runningObj = arr.first().toObject();
+    }
+    else if (doc.isObject()) {
+        QJsonObject rootObj = doc.object();
+        if (rootObj.contains("id") || rootObj.contains("name")) {
+            runningObj = rootObj;
+        }
+        else if (rootObj.value("running").isArray()) {
+            QJsonArray arr = rootObj.value("running").toArray();
+            if (arr.isEmpty()) {
+                clearRunningGame();
+                return;
+            }
+            runningObj = arr.first().toObject();
+        }
+        else if (rootObj.value("games").isArray()) {
+            QJsonArray arr = rootObj.value("games").toArray();
+            if (arr.isEmpty()) {
+                clearRunningGame();
+                return;
+            }
+            runningObj = arr.first().toObject();
+        }
+    }
+    else {
+        clearRunningGame();
+        return;
     }
 
-    beginResetModel();
-    m_Games = newGames;
-    endResetModel();
+    if (runningObj.isEmpty()) {
+        clearRunningGame();
+        return;
+    }
+
+    GameEntry runningGame;
+    runningGame.id = runningObj["id"].toString();
+    runningGame.name = runningObj["name"].toString();
+    runningGame.source = runningObj["source"].toString();
+    runningGame.posterUrl = normalizePosterUrl(runningObj["poster_url"].toString(), m_HostAddress);
+
+    if (runningGame.posterUrl.isEmpty() && !runningGame.id.isEmpty()) {
+        runningGame.posterUrl = posterUrlForGameId(runningGame.id);
+    }
+
+    setRunningGame(runningGame);
 }
 
 int CustomGameModel::rowCount(const QModelIndex &parent) const
@@ -208,6 +384,17 @@ QHash<int, QByteArray> CustomGameModel::roleNames() const
     return names;
 }
 
+QString CustomGameModel::posterUrlForGameId(const QString& gameId) const
+{
+    for (const GameEntry& entry : m_Games) {
+        if (entry.id == gameId && !entry.posterUrl.isEmpty()) {
+            return entry.posterUrl;
+        }
+    }
+
+    return QString();
+}
+
 void CustomGameModel::setLoading(bool loading)
 {
     if (m_Loading != loading) {
@@ -221,5 +408,37 @@ void CustomGameModel::setErrorString(const QString& error)
     if (m_ErrorString != error) {
         m_ErrorString = error;
         emit errorStringChanged();
+    }
+}
+
+void CustomGameModel::setCheckingRunningGame(bool checking)
+{
+    if (m_CheckingRunningGame != checking) {
+        m_CheckingRunningGame = checking;
+        emit checkingRunningGameChanged();
+    }
+}
+
+void CustomGameModel::setRunningGame(const GameEntry& game)
+{
+    if (m_RunningGame.id == game.id &&
+        m_RunningGame.name == game.name &&
+        m_RunningGame.source == game.source &&
+        m_RunningGame.posterUrl == game.posterUrl) {
+        return;
+    }
+
+    m_RunningGame = game;
+    emit runningGameChanged();
+}
+
+void CustomGameModel::clearRunningGame()
+{
+    if (!m_RunningGame.id.isEmpty() ||
+        !m_RunningGame.name.isEmpty() ||
+        !m_RunningGame.source.isEmpty() ||
+        !m_RunningGame.posterUrl.isEmpty()) {
+        m_RunningGame = GameEntry();
+        emit runningGameChanged();
     }
 }
