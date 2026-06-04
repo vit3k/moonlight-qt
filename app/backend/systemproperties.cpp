@@ -51,6 +51,19 @@ SystemProperties::SystemProperties()
     isRunningWayland = WMUtils::isRunningWayland();
     isRunningXWayland = isRunningWayland && QGuiApplication::platformName() == "xcb";
     usesMaterial3Theme = QLibraryInfo::version() >= QVersionNumber(6, 5, 0);
+
+#ifdef Q_OS_LINUX
+    const QString xdgCurrentDesktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP").toLower();
+    const QString xdgSessionDesktop = qEnvironmentVariable("XDG_SESSION_DESKTOP").toLower();
+    const bool runningUnderGamescope = xdgCurrentDesktop.contains("gamescope") ||
+                                       xdgSessionDesktop.contains("gamescope");
+    const bool isSteamDeck = qEnvironmentVariable("SteamDeck") == "1" ||
+                             qEnvironmentVariable("STEAMDECK") == "1";
+    forceFullscreenUi = runningUnderGamescope || isSteamDeck;
+#else
+    forceFullscreenUi = false;
+#endif
+
     QString nativeArch = QSysInfo::currentCpuArchitecture();
 
 #ifdef Q_OS_WIN32
