@@ -252,18 +252,34 @@ ApplicationWindow {
 
     header: ToolBar {
         id: toolBar
+        visible: !(stackView.currentItem instanceof PcView)
         height: 72
         anchors.topMargin: 5
         anchors.bottomMargin: 5
-        Material.background: "transparent"
+        Material.background: "#1a1a2e"
 
-        background: Rectangle {
-            anchors.fill: parent
-            anchors.margins: 8
-            radius: 12
-            color: Qt.rgba(0, 0, 0, 0.22)
-            border.color: Qt.rgba(1, 1, 1, 0.10)
-            border.width: 1
+        background: Item {
+            // Match the page gradient — use the top colour of the gradient
+            Rectangle {
+                anchors.fill: parent
+                color: "#1a1a2e"
+            }
+
+            // Subtle separator line at the bottom of the toolbar
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: "transparent" }
+                    GradientStop { position: 0.3; color: "#4fc3f7" }
+                    GradientStop { position: 0.7; color: "#4fc3f7" }
+                    GradientStop { position: 1.0; color: "transparent" }
+                }
+                opacity: 0.6
+            }
         }
 
         Label {

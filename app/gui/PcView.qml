@@ -12,12 +12,87 @@ import SdlGamepadKeyNavigation 1.0
 CenteredGridView {
     property ComputerModel computerModel : createModel()
 
+    // Wake-on-LAN flow state
+    property int wakingComputerIndex: -1
+    property string wakingComputerName: ""
+    property int wakeAttempts: 0
+    property bool wakingPaired: false
+
+    function cancelWake() {
+        wakeRetryTimer.stop()
+        wakingComputerIndex = -1
+        wakingComputerName = ""
+        wakeAttempts = 0
+        wakingPaired = false
+    }
+
+    Timer {
+        id: wakeRetryTimer
+        interval: 5000
+        repeat: false
+        onTriggered: {
+            if (pcGrid.wakingComputerIndex < 0) return
+            if (pcGrid.wakeAttempts >= 2) {
+                // Gave up after two wake attempts
+                errorDialog.text = qsTr("Unable to wake '%1'. Please ensure the PC is powered and Wake-on-LAN is configured.").arg(pcGrid.wakingComputerName)
+                errorDialog.helpText = ""
+                errorDialog.open()
+                pcGrid.cancelWake()
+            } else {
+                pcGrid.wakeAttempts++
+                computerModel.wakeComputer(pcGrid.wakingComputerIndex)
+                wakeRetryTimer.start()
+            }
+        }
+    }
+
+    Connections {
+        target: computerModel
+        function onDataChanged(topLeft, bottomRight, roles) {
+            if (pcGrid.wakingComputerIndex < 0) return
+            if (topLeft.row <= pcGrid.wakingComputerIndex && pcGrid.wakingComputerIndex <= bottomRight.row) {
+                if (computerModel.isComputerOnline(pcGrid.wakingComputerIndex)) {
+                    var idx = pcGrid.wakingComputerIndex
+                    var name = pcGrid.wakingComputerName
+                    var paired = pcGrid.wakingPaired
+                    pcGrid.cancelWake()
+                    if (paired) {
+                        var component = Qt.createComponent("AppView.qml")
+                        var appView = component.createObject(stackView, {"computerIndex": idx, "objectName": name})
+                        stackView.push(appView)
+                    } else {
+                        var pin = computerModel.generatePinString()
+                        computerModel.pairComputer(idx, pin)
+                        pairDialog.pin = pin
+                        pairDialog.open()
+                    }
+                }
+            }
+        }
+    }
+
+    function ensureCurrentSelection() {
+        if (count > 0 && currentIndex < 0) {
+            currentIndex = 0
+        }
+
+        // Keep navigation actionable by focusing the current delegate item.
+        if (activeFocus && currentItem) {
+            currentItem.forceActiveFocus(Qt.TabFocus)
+        }
+    }
+
     id: pcGrid
     focus: true
     activeFocusOnTab: true
-    topMargin: 20
-    bottomMargin: 5
-    cellWidth: 310; cellHeight: 330;
+    cellWidth: Math.max(360, Math.min(width - 80, 760))
+    cellHeight: 80
+    // +1 ensures availableWidth < cellWidth so CenteredGridView uses minMargin (not
+    // the remainder formula), keeping the single-column list properly centered.
+    minMargin: Math.max(0, Math.ceil((width - cellWidth) / 2) + 1)
+    topMargin: Math.max(20, (height - (count * cellHeight)) / 2)
+    bottomMargin: topMargin
+    clip: true
     objectName: qsTr("Computers")
 
     Component.onCompleted: {
@@ -34,14 +109,22 @@ CenteredGridView {
         // Setup signals on CM
         ComputerManager.computerAddCompleted.connect(addComplete)
 
-        // Highlight the first item if a gamepad is connected
-        if (currentIndex === -1 && SdlGamepadKeyNavigation.getConnectedGamepads() > 0) {
-            currentIndex = 0
+        // Ensure directional navigation has a selected item.
+        // This keeps keyboard/gamepad navigation working even without the toolbar.
+        ensureCurrentSelection()
+    }
+
+    onCountChanged: ensureCurrentSelection()
+
+    onActiveFocusChanged: {
+        if (activeFocus) {
+            ensureCurrentSelection()
         }
     }
 
     StackView.onDeactivating: {
         ComputerManager.computerAddCompleted.disconnect(addComplete)
+        cancelWake()
     }
 
     function pairingComplete(error)
@@ -104,60 +187,93 @@ CenteredGridView {
         }
     }
 
+    // Dark gradient background for the PC list page
+    Rectangle {
+        anchors.fill: parent
+        z: -1
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#1a1a2e" }
+            GradientStop { position: 1.0; color: "#16213e" }
+        }
+    }
+
     model: computerModel
 
     delegate: NavigableItemDelegate {
-        width: 300; height: 320;
+        id: pcDelegate
+        width: pcGrid.cellWidth
+        height: 72
         grid: pcGrid
+        leftPadding: 0
+        rightPadding: 0
+
+        // Transparent clickable background — highlight is on the name only
+        background: Item {}
 
         property alias pcContextMenu : pcContextMenuLoader.item
 
-        Image {
-            id: pcIcon
-            anchors.horizontalCenter: parent.horizontalCenter
-            source: "qrc:/res/desktop_windows-48px.svg"
-            sourceSize {
-                width: 200
-                height: 200
+        Item {
+            anchors.left: parent.left
+            anchors.right: statusArea.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            height: pcNameText.height + 6
+
+            Label {
+                id: pcNameText
+                text: model.name
+                color: pcDelegate.highlighted ? "#ffffff" : "#cccccc"
+
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                font.pointSize: 24
+                font.bold: pcDelegate.highlighted
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                wrapMode: Text.NoWrap
+                elide: Text.ElideRight
+
+                Behavior on color { ColorAnimation { duration: 120 } }
+            }
+
+            // Accent underline that appears when highlighted
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                width: pcDelegate.highlighted ? Math.min(pcNameText.implicitWidth + 24, parent.width) : 0
+                height: 2
+                radius: 1
+                color: "#4fc3f7"
+                opacity: pcDelegate.highlighted ? 1.0 : 0.0
+
+                Behavior on width    { NumberAnimation  { duration: 180; easing.type: Easing.OutCubic } }
+                Behavior on opacity  { NumberAnimation  { duration: 180 } }
             }
         }
 
-        Image {
-            // TODO: Tooltip
-            id: stateIcon
-            anchors.horizontalCenter: pcIcon.horizontalCenter
-            anchors.verticalCenter: pcIcon.verticalCenter
-            anchors.verticalCenterOffset: !model.online ? -18 : -16
-            visible: !model.statusUnknown && (!model.online || !model.paired)
-            source: !model.online ? "qrc:/res/warning_FILL1_wght300_GRAD200_opsz24.svg" : "qrc:/res/baseline-lock-24px.svg"
-            sourceSize {
-                width: !model.online ? 75 : 70
-                height: !model.online ? 75 : 70
+        Row {
+            id: statusArea
+            anchors.right: parent.right
+            anchors.rightMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 0
+
+            BusyIndicator {
+                id: checkingSpinner
+                width: 24
+                height: 24
+                visible: model.statusUnknown || pcGrid.wakingComputerIndex === index
+                running: visible
             }
-        }
 
-        BusyIndicator {
-            id: statusUnknownSpinner
-            anchors.horizontalCenter: pcIcon.horizontalCenter
-            anchors.verticalCenter: pcIcon.verticalCenter
-            anchors.verticalCenterOffset: -15
-            width: 75
-            height: 75
-            visible: model.statusUnknown
-            running: visible
-        }
-
-        Label {
-            id: pcNameText
-            text: model.name
-
-            width: parent.width
-            anchors.top: pcIcon.bottom
-            anchors.bottom: parent.bottom
-            font.pointSize: 36
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            elide: Text.ElideRight
+            Image {
+                id: stateIcon
+                visible: !model.statusUnknown && pcGrid.wakingComputerIndex !== index
+                source: model.online ? "qrc:/res/baseline-check_circle_outline-24px.svg"
+                                     : "qrc:/res/baseline-warning-24px.svg"
+                sourceSize.width: 24
+                sourceSize.height: 24
+            }
         }
 
         Loader {
@@ -243,8 +359,14 @@ CenteredGridView {
                     pairDialog.open()
                 }
             } else if (!model.online) {
-                // Using open() here because it may be activated by keyboard
-                pcContextMenu.open()
+                if (model.wakeable) {
+                    pcGrid.wakingComputerIndex = index
+                    pcGrid.wakingComputerName = model.name
+                    pcGrid.wakingPaired = model.paired
+                    pcGrid.wakeAttempts = 1
+                    computerModel.wakeComputer(index)
+                    wakeRetryTimer.start()
+                }
             }
         }
 

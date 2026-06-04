@@ -1638,7 +1638,7 @@ void Session::showMenuOverlay()
             m_OverlayManager.setOverlayState(Overlay::OverlayDebug,
                 !m_OverlayManager.isOverlayEnabled(Overlay::OverlayDebug));
         }},
-        {"Toggle HDR",       [this]{
+        {m_Preferences->enableHdr ? "Disable HDR" : "Enable HDR", [this]{
             m_MenuOverlay.setVisible(false);
             m_Preferences->enableHdr = !m_Preferences->enableHdr;
             m_Preferences->save();

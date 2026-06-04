@@ -43,6 +43,8 @@ public:
 
     Q_INVOKABLE void renameComputer(int computerIndex, QString name);
 
+    Q_INVOKABLE bool isComputerOnline(int computerIndex);
+
     Q_INVOKABLE Session* createSessionForCurrentGame(int computerIndex);
 
 signals:

@@ -19,6 +19,15 @@ Item {
     property bool pendingReconnect : false
     property bool pendingSuspend : false
 
+    Rectangle {
+        anchors.fill: parent
+        z: -1
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#1a1a2e" }
+            GradientStop { position: 1.0; color: "#16213e" }
+        }
+    }
+
     function restoreMoonlightUiFocus()
     {
         if (!window) {

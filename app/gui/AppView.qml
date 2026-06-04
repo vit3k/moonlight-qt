@@ -19,6 +19,7 @@ Page {
 
     id: gameListPage
     focus: true
+    background: Item {}
 
     signal focusToolbarRequested()
 
@@ -95,6 +96,16 @@ Page {
     }
 
     header: null
+
+    // Same dark gradient as the PC list page
+    Rectangle {
+        anchors.fill: parent
+        z: 0
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#1a1a2e" }
+            GradientStop { position: 1.0; color: "#16213e" }
+        }
+    }
 
     Connections {
         target: gameModel
@@ -182,12 +193,12 @@ Page {
             x: Math.floor(gameListPage.gameTileGap / 2)
             y: Math.floor(gameListPage.gameTileGap / 2)
 
-            background: Rectangle {
-                radius: 10
-                color: gameDelegate.highlighted ? Qt.darker(Material.backgroundColor, 1.2) : Qt.darker(Material.backgroundColor, 1.08)
-                border.color: gameDelegate.highlighted ? Material.accentColor : Material.dividerColor
-                border.width: gameDelegate.highlighted ? 2 : 1
-            }
+            background: Item {}
+
+            // Subtle scale-up when highlighted
+            scale: gameDelegate.highlighted ? 1.05 : 1.0
+            z: gameDelegate.highlighted ? 2 : 1
+            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
             Keys.onReturnPressed: launchGame()
             Keys.onEnterPressed: launchGame()
@@ -236,8 +247,6 @@ Page {
                         anchors.fill: parent
                         radius: 8
                         color: Qt.rgba(1, 1, 1, 0.05)
-                        border.color: Material.dividerColor
-                        border.width: 1
                         clip: true
 
                         Image {
@@ -292,8 +301,11 @@ Page {
 
     Rectangle {
         anchors.fill: parent
-        color: Material.backgroundColor
         visible: !gameModel.loading && !gameModel.checkingRunningGame && gameModel.hasRunningGame
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#1a1a2e" }
+            GradientStop { position: 1.0; color: "#16213e" }
+        }
 
         Flickable {
             anchors.fill: parent
@@ -317,8 +329,6 @@ Page {
                         anchors.fill: parent
                         radius: 10
                         color: Qt.rgba(1, 1, 1, 0.05)
-                        border.color: Material.dividerColor
-                        border.width: 1
                         clip: true
 
                         Image {

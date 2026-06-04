@@ -20,7 +20,10 @@ ItemDelegate {
 
         // If we've reached the top of the grid, move focus to the toolbar
         if (grid.currentItem === this) {
-            nextItemInFocusChain(false).forceActiveFocus(Qt.TabFocus)
+            var previousItem = nextItemInFocusChain(false)
+            if (previousItem && previousItem.visible !== false && previousItem.enabled !== false) {
+                previousItem.forceActiveFocus(Qt.TabFocus)
+            }
         }
     }
     Keys.onReturnPressed: {

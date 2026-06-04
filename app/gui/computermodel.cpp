@@ -114,6 +114,16 @@ QHash<int, QByteArray> ComputerModel::roleNames() const
     return names;
 }
 
+bool ComputerModel::isComputerOnline(int computerIndex)
+{
+    if (computerIndex < 0 || computerIndex >= m_Computers.count()) {
+        return false;
+    }
+    NvComputer* computer = m_Computers[computerIndex];
+    QReadLocker lock(&computer->lock);
+    return computer->state == NvComputer::CS_ONLINE;
+}
+
 Session* ComputerModel::createSessionForCurrentGame(int computerIndex)
 {
     Q_ASSERT(computerIndex < m_Computers.count());
