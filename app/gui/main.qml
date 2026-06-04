@@ -109,6 +109,15 @@ ApplicationWindow {
         }
     }
 
+    function focusCurrentViewContent(preferRight) {
+        if (stackView.currentItem instanceof AppView && stackView.currentItem.focusPrimaryContent) {
+            stackView.currentItem.focusPrimaryContent(preferRight === true)
+        }
+        else if (stackView.currentItem) {
+            stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+        }
+    }
+
     StackView {
         id: stackView
         anchors.fill: parent
@@ -280,6 +289,31 @@ ApplicationWindow {
             }
         }
 
+        function visibleToolbarButtons() {
+            return [backButton, discordButton, addPcButton, launchDesktopButton,
+                    refreshGamesButton, updateButton, helpButton, settingsButton]
+                    .filter(function(button) {
+                        return button && button.visible && button.enabled
+                    })
+        }
+
+        function focusAdjacentToolbarButton(currentButton, forward) {
+            var buttons = visibleToolbarButtons()
+            if (buttons.length === 0) {
+                return
+            }
+
+            var idx = buttons.indexOf(currentButton)
+            if (idx < 0) {
+                buttons[0].forceActiveFocus(Qt.TabFocus)
+                return
+            }
+
+            var nextIdx = forward ? (idx + 1) % buttons.length
+                                  : (idx - 1 + buttons.length) % buttons.length
+            buttons[nextIdx].forceActiveFocus(Qt.TabFocus)
+        }
+
         Label {
             id: titleLabel
             visible: toolBar.width > 700
@@ -298,6 +332,7 @@ ApplicationWindow {
             anchors.fill: parent
 
             NavigableToolButton {
+                id: backButton
                 // Only make the button visible if the user has navigated somewhere.
                 visible: stackView.depth > 1
 
@@ -306,7 +341,17 @@ ApplicationWindow {
                 onClicked: goBack()
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(false)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(backButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(backButton, false)
+                    event.accepted = true
                 }
             }
 
@@ -351,7 +396,17 @@ ApplicationWindow {
                 onClicked: Qt.openUrlExternally("https://moonlight-stream.org/discord");
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(true)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(discordButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(discordButton, false)
+                    event.accepted = true
                 }
             }
 
@@ -377,7 +432,17 @@ ApplicationWindow {
                 }
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(true)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(addPcButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(addPcButton, false)
+                    event.accepted = true
                 }
             }
 
@@ -397,7 +462,17 @@ ApplicationWindow {
                 }
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(true)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(launchDesktopButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(launchDesktopButton, false)
+                    event.accepted = true
                 }
             }
 
@@ -417,7 +492,17 @@ ApplicationWindow {
                 }
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(true)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(refreshGamesButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(refreshGamesButton, false)
+                    event.accepted = true
                 }
             }
 
@@ -455,7 +540,17 @@ ApplicationWindow {
                 }
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(true)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(updateButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(updateButton, false)
+                    event.accepted = true
                 }
             }
 
@@ -480,7 +575,17 @@ ApplicationWindow {
                 onClicked: Qt.openUrlExternally("https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide");
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(true)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(helpButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(helpButton, false)
+                    event.accepted = true
                 }
             }
 
@@ -498,7 +603,17 @@ ApplicationWindow {
                 onClicked: navigateTo("qrc:/gui/GamepadMapper.qml", GamepadMapper)
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(true)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(settingsButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(settingsButton, false)
+                    event.accepted = true
                 }
             }
 
@@ -510,7 +625,27 @@ ApplicationWindow {
                 onClicked: navigateTo("qrc:/gui/SettingsView.qml", SettingsView)
 
                 Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                    focusCurrentViewContent(true)
+                }
+
+                Keys.onRightPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(settingsButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onLeftPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(settingsButton, false)
+                    event.accepted = true
+                }
+
+                Keys.onTabPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(settingsButton, true)
+                    event.accepted = true
+                }
+
+                Keys.onBacktabPressed: function(event) {
+                    toolBar.focusAdjacentToolbarButton(settingsButton, false)
+                    event.accepted = true
                 }
 
                 Shortcut {
@@ -529,15 +664,41 @@ ApplicationWindow {
         Connections {
             target: (stackView.currentItem instanceof AppView) ? stackView.currentItem : null
 
-            function onFocusToolbarRequested() {
-                if (launchDesktopButton.visible) {
-                    launchDesktopButton.forceActiveFocus(Qt.TabFocus)
+            function onFocusToolbarRequested(preferRight) {
+                if (preferRight) {
+                    if (settingsButton.visible) {
+                        settingsButton.forceActiveFocus(Qt.TabFocus)
+                    }
+                    else if (helpButton.visible) {
+                        helpButton.forceActiveFocus(Qt.TabFocus)
+                    }
+                    else if (updateButton.visible) {
+                        updateButton.forceActiveFocus(Qt.TabFocus)
+                    }
+                    else if (refreshGamesButton.visible) {
+                        refreshGamesButton.forceActiveFocus(Qt.TabFocus)
+                    }
+                    else if (launchDesktopButton.visible) {
+                        launchDesktopButton.forceActiveFocus(Qt.TabFocus)
+                    }
+                    else {
+                        toolBar.forceActiveFocus(Qt.TabFocus)
+                    }
                 }
-                else if (refreshGamesButton.visible) {
-                    refreshGamesButton.forceActiveFocus(Qt.TabFocus)
+                else if (backButton.visible) {
+                    backButton.forceActiveFocus(Qt.TabFocus)
                 }
                 else {
-                    toolBar.forceActiveFocus(Qt.TabFocus)
+                    // Fallback for root pages without a back button.
+                    if (launchDesktopButton.visible) {
+                        launchDesktopButton.forceActiveFocus(Qt.TabFocus)
+                    }
+                    else if (refreshGamesButton.visible) {
+                        refreshGamesButton.forceActiveFocus(Qt.TabFocus)
+                    }
+                    else {
+                        toolBar.forceActiveFocus(Qt.TabFocus)
+                    }
                 }
             }
         }

@@ -21,7 +21,43 @@ Page {
     focus: true
     background: Item {}
 
-    signal focusToolbarRequested()
+    signal focusToolbarRequested(bool preferRight)
+
+    function shouldPreferRightToolbarForGame(gameIndex) {
+        if (gameIndex < 0) {
+            return false
+        }
+
+        var column = gameIndex % gameListPage.gameColumns
+        // First two tiles map to the left icon; tiles further right map to right icons.
+        return column >= 2
+    }
+
+    function focusPrimaryContent(preferRight) {
+        if (gameModel.hasRunningGame) {
+            if (returnToGameButton.visible && returnToGameButton.enabled) {
+                returnToGameButton.forceActiveFocus(Qt.TabFocus)
+            }
+            else if (exitGameButton.visible && exitGameButton.enabled) {
+                exitGameButton.forceActiveFocus(Qt.TabFocus)
+            }
+            return
+        }
+
+        if (gameList.visible) {
+            if (gameList.count > 0) {
+                var topRowRightmost = Math.min(gameListPage.gameColumns - 1, gameList.count - 1)
+                gameList.currentIndex = preferRight ? topRowRightmost : 0
+            }
+            gameList.forceActiveFocus(Qt.TabFocus)
+        }
+    }
+
+    function ensureInitialGameSelection() {
+        if (gameList.visible && gameList.count > 0 && gameList.currentIndex < 0) {
+            gameList.currentIndex = 0
+        }
+    }
 
     function createModel() {
         var model = Qt.createQmlObject('import CustomGameModel 1.0; CustomGameModel {}', gameListPage, '')
@@ -89,9 +125,13 @@ Page {
         }
         else {
             gameList.forceActiveFocus()
-            if (gameList.count > 0 && SdlGamepadKeyNavigation.getConnectedGamepads() > 0) {
-                gameList.currentIndex = 0
-            }
+            ensureInitialGameSelection()
+        }
+    }
+
+    onActiveFocusChanged: {
+        if (activeFocus) {
+            ensureInitialGameSelection()
         }
     }
 
@@ -177,9 +217,21 @@ Page {
 
         ScrollBar.vertical: ScrollBar {}
 
+        onCountChanged: {
+            gameListPage.ensureInitialGameSelection()
+        }
+
+        onVisibleChanged: {
+            if (visible) {
+                gameListPage.ensureInitialGameSelection()
+            }
+        }
+
         Keys.onUpPressed: function(event) {
             if (gameList.currentIndex < gameListPage.gameColumns) {
-                gameListPage.focusToolbarRequested()
+                var preferRight = gameListPage.shouldPreferRightToolbarForGame(gameList.currentIndex)
+                gameList.currentIndex = -1
+                gameListPage.focusToolbarRequested(preferRight)
                 event.accepted = true
             }
         }
@@ -193,10 +245,14 @@ Page {
             x: Math.floor(gameListPage.gameTileGap / 2)
             y: Math.floor(gameListPage.gameTileGap / 2)
 
-            background: Item {}
+            background: Rectangle {
+                radius: 12
+                color: gameDelegate.highlighted ? Qt.rgba(0.31, 0.76, 0.97, 0.22)
+                                               : Qt.rgba(1, 1, 1, 0.03)
+            }
 
-            // Subtle scale-up when highlighted
-            scale: gameDelegate.highlighted ? 1.05 : 1.0
+            // Stronger scale-up for better visibility of current selection
+            scale: gameDelegate.highlighted ? 1.08 : 1.0
             z: gameDelegate.highlighted ? 2 : 1
             Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
@@ -204,7 +260,8 @@ Page {
             Keys.onEnterPressed: launchGame()
             Keys.onUpPressed: function(event) {
                 if (index < gameListPage.gameColumns) {
-                    gameListPage.focusToolbarRequested()
+                    gameList.currentIndex = -1
+                    gameListPage.focusToolbarRequested(gameListPage.shouldPreferRightToolbarForGame(index))
                     event.accepted = true
                 } else {
                     gameList.moveCurrentIndexUp()
@@ -275,7 +332,8 @@ Page {
 
                     Label {
                         text: model.name
-                        font.pointSize: 13
+                        color: gameDelegate.highlighted ? "#ffffff" : "#d8d8d8"
+                        font.pointSize: gameDelegate.highlighted ? 14 : 13
                         font.bold: true
                         wrapMode: Text.Wrap
                         maximumLineCount: 2
