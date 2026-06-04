@@ -11,6 +11,9 @@ Page {
     property int computerIndex
     property CustomGameModel gameModel: createModel()
     property bool stoppingRunningGame: false
+    property bool waitingForGameExit: false
+    property int gameExitWaitAttempts: 0
+    property bool returningFromStream: false
     property int gameTileMinWidth: 210
     property int gameTileGap: 16
     property real posterAspectRatio: 1.5 // 2:3 width:height -> height = width * 1.5
@@ -66,6 +69,7 @@ Page {
     }
 
     function launchDesktop() {
+        returningFromStream = true
         var component = Qt.createComponent("StreamSegue.qml")
         var segue = component.createObject(stackView, {
             "appName": qsTr("Desktop"),
@@ -80,6 +84,7 @@ Page {
     }
 
     function resumeRunningGame() {
+        returningFromStream = true
         var component = Qt.createComponent("StreamSegue.qml")
         var segue = component.createObject(stackView, {
             "appName": gameModel.runningGameName,
@@ -102,6 +107,12 @@ Page {
         gameModel.stopRunningGame()
     }
 
+    function beginGameExitWait() {
+        waitingForGameExit = true
+        gameExitWaitAttempts = 0
+        gameExitPollTimer.restart()
+    }
+
     function focusNextRunningGameAction(currentItem, forward) {
         var next = currentItem.nextItemInFocusChain(forward)
         var safetyCounter = 0
@@ -120,10 +131,16 @@ Page {
     StackView.onActivated: {
         gameModel.fetchRunningGame()
 
-        if (gameModel.hasRunningGame) {
-            returnToGameButton.forceActiveFocus()
+        // When returning from a stream session (especially via overlay Exit Game),
+        // always enter a short wait/poll phase because running-game state can be stale
+        // at activation time and update a moment later.
+        if (returningFromStream) {
+            returningFromStream = false
+            beginGameExitWait()
         }
-        else {
+        else if (gameModel.hasRunningGame) {
+            returnToGameButton.forceActiveFocus()
+        } else {
             gameList.forceActiveFocus()
             ensureInitialGameSelection()
         }
@@ -152,10 +169,16 @@ Page {
 
         function onRunningGameChanged() {
             if (gameModel.hasRunningGame) {
-                returnToGameButton.forceActiveFocus()
+                if (!waitingForGameExit) {
+                    returnToGameButton.forceActiveFocus()
+                }
             }
             else {
                 stoppingRunningGame = false
+                waitingForGameExit = false
+                gameExitPollTimer.stop()
+                gameList.forceActiveFocus()
+                ensureInitialGameSelection()
             }
         }
 
@@ -170,14 +193,44 @@ Page {
                 return
             }
 
-            gameModel.refresh()
-            gameList.forceActiveFocus()
+            beginGameExitWait()
+        }
+    }
+
+    Timer {
+        id: gameExitPollTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            if (!waitingForGameExit) {
+                stop()
+                return
+            }
+
+            if (!gameModel.hasRunningGame) {
+                waitingForGameExit = false
+                stop()
+                gameList.forceActiveFocus()
+                ensureInitialGameSelection()
+                return
+            }
+
+            gameExitWaitAttempts++
+            if (gameExitWaitAttempts >= 5) {
+                // Host still reports a running game after retries.
+                waitingForGameExit = false
+                stop()
+                returnToGameButton.forceActiveFocus()
+                return
+            }
+
+            gameModel.fetchRunningGame()
         }
     }
 
     BusyIndicator {
         anchors.centerIn: parent
-        running: gameModel.loading || gameModel.checkingRunningGame
+        running: gameModel.loading || gameModel.checkingRunningGame || waitingForGameExit
         visible: running
     }
 
@@ -277,6 +330,8 @@ Page {
                 // Notify the backend to launch the selected game
                 gameListPage.gameModel.postGameLaunch(model.gameId)
 
+                gameListPage.returningFromStream = true
+
                 // Start streaming the Desktop app on the host
                 var component = Qt.createComponent("StreamSegue.qml")
                 var segue = component.createObject(stackView, {
@@ -359,7 +414,7 @@ Page {
 
     Rectangle {
         anchors.fill: parent
-        visible: !gameModel.loading && !gameModel.checkingRunningGame && gameModel.hasRunningGame
+        visible: !gameModel.loading && !gameModel.checkingRunningGame && gameModel.hasRunningGame && !waitingForGameExit
         gradient: Gradient {
             GradientStop { position: 0.0; color: "#1a1a2e" }
             GradientStop { position: 1.0; color: "#16213e" }
