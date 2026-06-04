@@ -267,18 +267,13 @@ ApplicationWindow {
 
             // Subtle separator line at the bottom of the toolbar
             Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
+                anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
+                width: parent.width * 0.42
                 height: 1
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 0.3; color: "#4fc3f7" }
-                    GradientStop { position: 0.7; color: "#4fc3f7" }
-                    GradientStop { position: 1.0; color: "transparent" }
-                }
-                opacity: 0.6
+                radius: 1
+                color: "#4fc3f7"
+                opacity: 0.55
             }
         }
 
