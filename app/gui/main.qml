@@ -167,6 +167,40 @@ ApplicationWindow {
         }
     }
 
+    // Floating "Add PC" button shown only on the PC list.
+    // The toolbar (which normally hosts the Add PC button) is hidden on
+    // PcView, so this provides the entry point to manual host add + PIN
+    // pairing. It reuses the existing addPcDialog.
+    RoundButton {
+        id: floatingAddPcButton
+        visible: stackView.currentItem instanceof PcView
+
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 32
+        anchors.bottomMargin: 32
+        width: 64
+        height: 64
+        z: 100
+
+        Material.background: "#4fc3f7"
+        Material.foreground: "#ffffff"
+
+        ToolTip.delay: 1000
+        ToolTip.timeout: 3000
+        ToolTip.visible: hovered
+        ToolTip.text: qsTr("Add PC manually") + (newPcShortcut.nativeText ? (" ("+newPcShortcut.nativeText+")") : "")
+
+        contentItem: Image {
+            source: "qrc:/res/ic_add_to_queue_white_48px.svg"
+            fillMode: Image.PreserveAspectFit
+            sourceSize.width: 30
+            sourceSize.height: 30
+        }
+
+        onClicked: addPcDialog.open()
+    }
+
     // This timer keeps us polling for 5 minutes of inactivity
     // to allow the user to work with Moonlight on a second display
     // while dealing with configuration issues. This will ensure
